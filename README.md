@@ -1,5 +1,7 @@
 # `Rollcall-bot qrCode version 0.1`
 
+### [简体中文](README_CN.md)
+
 ### step 1: Install requirements
 
 ```bash

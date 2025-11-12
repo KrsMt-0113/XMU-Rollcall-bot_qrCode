@@ -1,4 +1,4 @@
-# `Rollcall-bot qrCode version 0.1`
+# `XMU Rollcall bot for qrCode`
 
 ### [English](README.md)
 

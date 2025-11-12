@@ -276,8 +276,8 @@ if __name__ == "__main__":
 
             try:
                 result = q.get(timeout=SESSION_TIMEOUT + 5)
-                print("收到扫码内容 ->", result)
                 data = parse_sign_qr_code(result)
+                print("收到扫码内容 ->", data)
             except Empty:
                 print("超时，未收到扫码数据。")
                 continue

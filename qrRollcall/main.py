@@ -24,6 +24,7 @@ ngrok.set_auth_token(NGROK_TOKEN)
 
 app = Flask(__name__)
 sessions = {}
+session_cookies = {}
 
 HTML_TEMPLATE = """
 <!doctype html>
@@ -96,6 +97,85 @@ const video = document.getElementById("video");
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
 const msg = document.getElementById("msg");
+const cookies = {{ cookies|safe }};
+const url = "https://lnt.xmu.edu.cn";
+
+// 解析二维码数据的函数
+function parseSignQrCode(t) {
+  const ta = String.fromCharCode(30);
+  const ea = String.fromCharCode(31);
+  const na = String.fromCharCode(26);
+  const ra = String.fromCharCode(16);
+  const ia = na + "1";
+  const oa = na + "0";
+  
+  const aa = {};
+  ["courseId", "activityId", "activityType", "data", "rollcallId",
+   "groupSetId", "accessCode", "action", "enableGroupRollcall", "createUser",
+   "joinCourse"].forEach((key, i) => {
+    aa[key] = i.toString(36);
+  });
+  
+  const ua = {};
+  ["classroom-exam", "feedback", "vote"].forEach((key, i) => {
+    ua[key] = na + (i + 2).toString(36);
+  });
+  
+  const ca = {};
+  for (let k in aa) ca[aa[k]] = k;
+  const sa = {};
+  for (let k in ua) sa[ua[k]] = k;
+  
+  const result = {};
+  if (t && typeof t === "string") {
+    const parts = t.split("!").filter(p => p);
+    for (let part of parts) {
+      const idx = part.indexOf("~");
+      if (idx > 0) {
+        const r = part.substring(0, idx);
+        const i = part.substring(idx + 1);
+        const key = ca[r] || r;
+        let value;
+        if (i.startsWith(na)) {
+          if (i === ia) {
+            value = true;
+          } else if (i !== oa) {
+            value = sa[i] || i;
+          } else {
+            value = false;
+          }
+        } else if (i.startsWith(ra)) {
+          const parts_ = i.substring(1).split(".");
+          try {
+            const nums = parts_.map(p => parseInt(p, 36));
+            if (nums.length > 1) {
+              value = parseFloat(nums[0] + "." + nums[1]);
+            } else if (nums.length === 1) {
+              value = nums[0];
+            } else {
+              value = i;
+            }
+          } catch (e) {
+            value = i;
+          }
+        } else {
+          value = i.replace(new RegExp(ea, 'g'), "~").replace(new RegExp(ta, 'g'), "!");
+        }
+        result[key] = value;
+      }
+    }
+  }
+  return result;
+}
+
+// 生成UUID
+function generateUUID() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
 
 async function start() {
   try {
@@ -120,6 +200,55 @@ function stopCamera() {
   if (s) s.getTracks().forEach(t => t.stop());
 }
 
+async function signIn(qrData) {
+  try {
+    const parsedData = parseSignQrCode(qrData);
+    console.log("解析的数据:", parsedData);
+    
+    if (!parsedData.rollcallId || !parsedData.data) {
+      return { status_code: 400, message: "二维码数据不完整" };
+    }
+    
+    const signUrl = `${url}/api/rollcall/${parsedData.rollcallId}/answer_qr_rollcall`;
+    const body = {
+      data: parsedData.data,
+      deviceId: generateUUID()
+    };
+    
+    // 将cookies转换为字符串格式
+    let cookieStr = "";
+    for (let key in cookies) {
+      if (cookieStr) cookieStr += "; ";
+      cookieStr += key + "=" + cookies[key];
+    }
+    
+    const response = await fetch(signUrl, {
+      method: "PUT",
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Mobile Safari/537.36 Edg/141.0.0.0",
+        "Content-Type": "application/json",
+        "Cookie": cookieStr
+      },
+      body: JSON.stringify(body),
+      credentials: "include"
+    });
+    
+    const status = response.status;
+    let message = "";
+    
+    if (status === 200) {
+      message = "签到成功!";
+    } else {
+      message = `签到失败，状态码: ${status}`;
+    }
+    
+    return { status_code: status, message: message };
+  } catch (e) {
+    console.error("签到错误:", e);
+    return { status_code: 500, message: "签到请求失败: " + e.message };
+  }
+}
+
 function tick() {
   if (video.readyState === video.HAVE_ENOUGH_DATA) {
     canvas.width = video.videoWidth;
@@ -128,16 +257,22 @@ function tick() {
     const data = ctx.getImageData(0, 0, canvas.width, canvas.height);
     const code = jsQR(data.data, data.width, data.height);
     if (code) {
-      msg.textContent = "已识别，正在上传…";
+      msg.textContent = "已识别，正在签到…";
       stopCamera();
-      fetch(submitUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: code.data })
-      }).then(r=>r.json()).then(j=>{
-        msg.textContent = j.message || "上传完成";
-      }).catch(e=>{
-        msg.textContent = "上传失败: "+e;
+      
+      signIn(code.data).then(result => {
+        msg.textContent = result.message;
+        
+        // 将状态码发送回服务器
+        fetch(submitUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(result)
+        }).then(r => r.json()).then(j => {
+          console.log("服务器响应:", j);
+        }).catch(e => {
+          console.error("发送状态失败:", e);
+        });
       });
       return;
     }
@@ -161,18 +296,21 @@ def clear_console():
 def scan_page(sid):
     if sid not in sessions:
         return "会话不存在或过期", 404
-    return render_template_string(HTML_TEMPLATE, sid=sid)
+    cookies_json = json.dumps(session_cookies.get(sid, {}))
+    return render_template_string(HTML_TEMPLATE, sid=sid, cookies=cookies_json)
 
 @app.route("/submit/<sid>", methods=["POST"])
 def submit(sid):
     if sid not in sessions:
         return jsonify({"ok": False, "message": "会话无效或已过期"}), 404
     data = request.get_json(force=True)
-    text = data.get("text")
-    if not text:
-        return jsonify({"ok": False, "message": "没有二维码内容"}), 400
-    sessions[sid].put(text)
-    return jsonify({"ok": True, "message": "已收到二维码内容"})
+    status_code = data.get("status_code")
+    message = data.get("message", "")
+    if status_code is None:
+        return jsonify({"ok": False, "message": "缺少状态码"}), 400
+    # 将状态码和消息放入队列
+    sessions[sid].put({"status_code": status_code, "message": message})
+    return jsonify({"ok": True, "message": "状态已接收"})
 
 @app.route("/_shutdown", methods=["POST"])
 def _shutdown():
@@ -193,10 +331,11 @@ def get_local_ip():
         s.close()
     return ip
 
-def create_session(timeout=SESSION_TIMEOUT):
+def create_session(cookies, timeout=SESSION_TIMEOUT):
     sid = uuid.uuid4().hex
     q = Queue()
     sessions[sid] = q
+    session_cookies[sid] = cookies
     def expire():
         time.sleep(timeout)
         if sid in sessions:
@@ -206,6 +345,8 @@ def create_session(timeout=SESSION_TIMEOUT):
             except:
                 pass
             del sessions[sid]
+            if sid in session_cookies:
+                del session_cookies[sid]
     threading.Thread(target=expire, daemon=True).start()
     return sid, q
 
@@ -268,40 +409,34 @@ if __name__ == "__main__":
 
     try:
         while True:
-            sid, q = create_session()
+            sid, q = create_session(verified_cookies)
             link = f"{public_base}/scan/{sid}"
             print("一次性扫码链接（有效期 %ds）：" % SESSION_TIMEOUT)
             print(link)
-            print("等待扫码并回传数据...")
+            print("等待扫码和签到...")
 
             try:
                 result = q.get(timeout=SESSION_TIMEOUT + 5)
-                data = parse_sign_qr_code(result)
-                print("收到扫码内容 ->", data)
             except Empty:
-                print("超时，未收到扫码数据。")
+                print("超时，未收到签到结果。")
                 continue
 
             if result is None:
                 print("会话被过期或取消。")
                 continue
 
-            if result:
-                f"{url}/api/rollcall/{data['rollcallId']}/answer_qr_rollcall"
-                body = {
-                    "data": data['data'],
-                    "deviceId": str(uuid.uuid4()),
-                }
-                headers = {
-                    "User-Agent": "Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Mobile Safari/537.36 Edg/141.0.0.0",
-                    "Content-Type": "application/json"
-                }
-                res = requests.put(url, headers=headers, data=json.dumps(body), cookies= verified_cookies)
-                if res.status_code == 200:
+            if result and isinstance(result, dict):
+                status_code = result.get("status_code")
+                message = result.get("message", "")
+                print(f"收到签到结果: 状态码 {status_code} - {message}")
+                
+                if status_code == 200:
                     print("二维码签到成功!")
                     break
                 else:
-                    print("签到失败，服务器返回状态码:", res.status_code)
+                    print(f"签到失败，状态码: {status_code}, 消息: {message}")
+            else:
+                print("收到无效的响应格式")
 
     finally:
         try:

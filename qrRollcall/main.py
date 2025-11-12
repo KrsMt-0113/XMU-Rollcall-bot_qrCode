@@ -205,28 +205,13 @@ def create_session(timeout=SESSION_TIMEOUT):
     return sid, q
 
 def run_flask():
-    # 仅用于开发/临时使用。生产请用 gunicorn/nginx 等。
-    # print("Flask 服务启动中...")
     app.run(host="0.0.0.0", port=5001, debug=False, use_reloader=False)
 
-# ---- 用户实现的校验函数（按需修改）----
-def is_valid(qr_text: str) -> bool:
-    """
-    在这里定义“这是我要的格式”的判定逻辑。
-    示例：期望是 JSON 且含 "token" 字段。
-    """
-    try:
-        d = json.loads(qr_text)
-    except Exception:
-        return False
-    return isinstance(d, dict) and "token" in d and len(str(d["token"]))>0
-
-# ---- 主流程 ----
 if __name__ == "__main__":
     chrome_options = Options()
-    chrome_options.add_argument("--headless")  # 无头运行
+    chrome_options.add_argument("--headless")
 
-    print("正在初始化...")
+    print("正在初始化Selenium...")
     driver = webdriver.Chrome(options=chrome_options)
 
     driver.get("https://lnt.xmu.edu.cn")
@@ -271,8 +256,6 @@ if __name__ == "__main__":
     else:
         public_base = tunnel.public_url.rstrip("/")
         print("ngrok 隧道已建立:", public_base)
-
-    # print("若在同一局域网内且不使用 ngrok，可直接使用 http://%s:5001/scan/<sid>" % local_ip)
 
     try:
         while True:

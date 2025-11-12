@@ -1,4 +1,5 @@
-# clone from: https://github.com/wilinz/fuck_tronclass_sign/blob/main/parse_sign_qr_code.py
+# from: https://github.com/wilinz/fuck_tronclass_sign/blob/main/parse_sign_qr_code.py
+
 # 定义特殊字符
 ta = chr(30)
 ea = chr(31)

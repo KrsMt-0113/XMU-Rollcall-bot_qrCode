@@ -2,6 +2,8 @@
 
 ### [English](README.md)
 
+### [下载本工具](https://github.com/KrsMt-0113/XMU-Rollcall-bot_qrCode/releases)
+
 > **写在前面**
 > 
 > 我们意识到扫码步骤是不可避免的，不像四位签到码可以遍历，能做的只有如何**简化**远程扫码的流程。

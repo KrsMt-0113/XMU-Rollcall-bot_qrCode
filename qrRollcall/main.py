@@ -233,7 +233,7 @@ if __name__ == "__main__":
     time.sleep(1)
     local_ip = get_local_ip()
 
-    tunnel = ngrok.connect(5001)
+    tunnel = ngrok.connect("5001")
 
     tunnels = ngrok.get_tunnels()
 

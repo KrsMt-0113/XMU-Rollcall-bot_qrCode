@@ -6,9 +6,9 @@ from parse_code import parse_sign_qr_code
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from login import login
+from get_config import get_config_path
 
-
-with open("config.json", "r", encoding="utf-8") as f:
+with open(get_config_path()) as f:
     cfg = json.load(f)
 
 NGROK_TOKEN = cfg.get("ngrok_token")
@@ -31,7 +31,7 @@ HTML_TEMPLATE = """
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>扫码并回传</title>
+  <title>XMU Rollcall bot - QRcode Scanner</title>
   <style>
     * {
       margin: 0;
@@ -197,7 +197,6 @@ def create_session(timeout=SESSION_TIMEOUT):
     sid = uuid.uuid4().hex
     q = Queue()
     sessions[sid] = q
-    # 自动过期
     def expire():
         time.sleep(timeout)
         if sid in sessions:

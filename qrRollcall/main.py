@@ -1,4 +1,4 @@
-import json, threading, uuid, time, socket, requests
+import json, threading, uuid, time, socket, requests, os
 from queue import Queue, Empty
 from flask import Flask, request, render_template_string, jsonify
 from pyngrok import ngrok
@@ -151,6 +151,12 @@ start();
 </html>
 """
 
+def clear_console():
+    if os.name == 'nt':
+        os.system('cls')
+    else:
+        os.system('clear')
+
 @app.route("/scan/<sid>")
 def scan_page(sid):
     if sid not in sessions:
@@ -208,6 +214,8 @@ def run_flask():
     app.run(host="0.0.0.0", port=5001, debug=False, use_reloader=False)
 
 if __name__ == "__main__":
+    clear_console()
+
     chrome_options = Options()
     chrome_options.add_argument("--headless")
 
@@ -256,6 +264,8 @@ if __name__ == "__main__":
     else:
         public_base = tunnel.public_url.rstrip("/")
         print("ngrok 隧道已建立:", public_base)
+
+    clear_console()
 
     try:
         while True:

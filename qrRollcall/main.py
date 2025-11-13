@@ -7,6 +7,7 @@ from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from login import login
 from get_config import get_config_path
+from urllib.parse import urlparse, parse_qs
 
 with open(get_config_path()) as f:
     cfg = json.load(f)
@@ -16,6 +17,7 @@ SESSION_TIMEOUT = int(cfg.get("session_timeout", 180))
 USERNAME = cfg.get("username")
 PASSWORD = cfg.get("password")
 url = "https://lnt.xmu.edu.cn"
+base_url = url
 
 if not NGROK_TOKEN:
     raise SystemExit("config.json 中未找到 ngrok_token")
@@ -157,11 +159,37 @@ def clear_console():
     else:
         os.system('clear')
 
-def parse_url(url: str):
-    base_url = "https://c-mobile.xmu.edu.cn/j?p="
-    if url.startswith(base_url):
-        return url[len(base_url):].replace("%", "\\u00").encode('utf-8').decode('unicode_escape')
-    return url
+def scan_url_analysis(e: str):
+    print(f"scanUrlAnalysis url: {e}")
+
+    if "/j?p=" in e and not e.startswith("http"):
+        e = base_url + e
+
+    if not e.startswith("http"):
+        return e
+
+    try:
+        n = urlparse(e)
+    except Exception:
+        return e
+
+    if n.path in ["/j", "/scanner-jumper"]:
+        o = parse_qs(n.query)
+        r = None
+        try:
+            a = o.get("_p", [None])[0]
+            if a:
+                r = json.loads(a)
+        except Exception:
+            pass
+
+        if not r:
+            p_value = o.get("p", [""])[0]
+            r = parse_sign_qr_code(p_value)
+
+        return json.dumps(r) if r and isinstance(r, dict) and r else e
+
+    return e
 
 @app.route("/scan/<sid>")
 def scan_page(sid):
@@ -282,8 +310,9 @@ if __name__ == "__main__":
 
             try:
                 result = q.get(timeout=SESSION_TIMEOUT + 5)
-                data = parse_sign_qr_code(parse_url(result))
-                print("收到扫码内容 ->", data)
+                # print("链接:", result) # 调试用
+                # print("解析后链接:", scan_url_analysis(result)) # 调试用
+                data = json.loads(scan_url_analysis(result))
             except Empty:
                 print("超时，未收到扫码数据。")
                 continue
@@ -293,7 +322,8 @@ if __name__ == "__main__":
                 continue
 
             if result:
-                f"{url}/api/rollcall/{data['rollcallId']}/answer_qr_rollcall"
+                rollcall_url = f"{url}/api/rollcall/{data['rollcallId']}/answer_qr_rollcall"
+                # print("签到接口地址:", rollcall_url) # 调试用
                 body = {
                     "data": data['data'],
                     "deviceId": str(uuid.uuid4()),
@@ -303,7 +333,7 @@ if __name__ == "__main__":
                     "Content-Type": "application/json"
                 }
                 # "没用的，你试下就知道了"
-                res = requests.put(url, headers=headers, data=json.dumps(body), cookies= verified_cookies)
+                res = requests.put(rollcall_url, headers=headers, data=json.dumps(body), cookies= verified_cookies)
                 # 试了一下，签上了
                 # ”你单put没用的“
                 if res.status_code == 200:

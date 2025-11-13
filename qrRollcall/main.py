@@ -303,6 +303,7 @@ if __name__ == "__main__":
                     "Content-Type": "application/json"
                 }
                 res = requests.put(url, headers=headers, data=json.dumps(body), cookies= verified_cookies)
+                # 直接put签不上说是，单put签不上说是
                 if res.status_code == 200:
                     print("二维码签到成功!")
                     break

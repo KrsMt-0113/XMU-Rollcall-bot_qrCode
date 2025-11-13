@@ -302,8 +302,10 @@ if __name__ == "__main__":
                     "User-Agent": "Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Mobile Safari/537.36 Edg/141.0.0.0",
                     "Content-Type": "application/json"
                 }
+                # "没用的，你试下就知道了"
                 res = requests.put(url, headers=headers, data=json.dumps(body), cookies= verified_cookies)
-                # 直接put签不上说是，单put签不上说是
+                # 试了一下，签上了
+                # ”你单put没用的“
                 if res.status_code == 200:
                     print("二维码签到成功!")
                     break

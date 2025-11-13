@@ -210,8 +210,8 @@ def submit(sid):
             return jsonify({"ok": False, "message": f"签到失败，状态码: {res.status_code}"}), 500
     except Exception as e:
         print(f"[服务器] 处理失败: {str(e)}")
-        sessions[sid].put({"status": "error", "message": str(e)})
-        return jsonify({"ok": False, "message": f"处理失败: {str(e)}"}), 500
+        sessions[sid].put({"status": "error", "message": "处理失败，请重试"})
+        return jsonify({"ok": False, "message": "处理失败，请重试"}), 500
 
 @app.route("/_shutdown", methods=["POST"])
 def _shutdown():

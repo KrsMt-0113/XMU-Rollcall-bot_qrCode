@@ -24,6 +24,7 @@ ngrok.set_auth_token(NGROK_TOKEN)
 
 app = Flask(__name__)
 sessions = {}
+session_cookies = {}
 
 HTML_TEMPLATE = """
 <!doctype html>
@@ -177,8 +178,40 @@ def submit(sid):
     text = data.get("text")
     if not text:
         return jsonify({"ok": False, "message": "没有二维码内容"}), 400
-    sessions[sid].put(text)
-    return jsonify({"ok": True, "message": "已收到二维码内容"})
+    
+    # Parse QR code and perform sign-in on server side
+    try:
+        parsed_url = parse_url(text)
+        parsed_data = parse_sign_qr_code(parsed_url)
+        print(f"[服务器] 收到扫码内容 -> {parsed_data}")
+        
+        # Perform sign-in
+        rollcall_url = f"{url}/api/rollcall/{parsed_data['rollcallId']}/answer_qr_rollcall"
+        body = {
+            "data": parsed_data['data'],
+            "deviceId": str(uuid.uuid4()),
+        }
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Mobile Safari/537.36 Edg/141.0.0.0",
+            "Content-Type": "application/json"
+        }
+        
+        # Get cookies for this session
+        cookies = session_cookies.get(sid, {})
+        res = requests.put(rollcall_url, headers=headers, data=json.dumps(body), cookies=cookies)
+        
+        if res.status_code == 200:
+            print("[服务器] 二维码签到成功!")
+            sessions[sid].put({"status": "success", "message": "签到成功!"})
+            return jsonify({"ok": True, "message": "签到成功!"})
+        else:
+            print(f"[服务器] 签到失败，服务器返回状态码: {res.status_code}")
+            sessions[sid].put({"status": "failed", "message": f"签到失败，状态码: {res.status_code}"})
+            return jsonify({"ok": False, "message": f"签到失败，状态码: {res.status_code}"}), 500
+    except Exception as e:
+        print(f"[服务器] 处理失败: {str(e)}")
+        sessions[sid].put({"status": "error", "message": str(e)})
+        return jsonify({"ok": False, "message": f"处理失败: {str(e)}"}), 500
 
 @app.route("/_shutdown", methods=["POST"])
 def _shutdown():
@@ -199,10 +232,11 @@ def get_local_ip():
         s.close()
     return ip
 
-def create_session(timeout=SESSION_TIMEOUT):
+def create_session(cookies, timeout=SESSION_TIMEOUT):
     sid = uuid.uuid4().hex
     q = Queue()
     sessions[sid] = q
+    session_cookies[sid] = cookies  # Store cookies for this session
     def expire():
         time.sleep(timeout)
         if sid in sessions:
@@ -212,6 +246,8 @@ def create_session(timeout=SESSION_TIMEOUT):
             except:
                 pass
             del sessions[sid]
+            if sid in session_cookies:
+                del session_cookies[sid]
     threading.Thread(target=expire, daemon=True).start()
     return sid, q
 
@@ -274,16 +310,14 @@ if __name__ == "__main__":
 
     try:
         while True:
-            sid, q = create_session()
+            sid, q = create_session(verified_cookies)
             link = f"{public_base}/scan/{sid}"
             print("一次性扫码链接（有效期 %ds）：" % SESSION_TIMEOUT)
             print(link)
-            print("等待扫码并回传数据...")
+            print("等待扫码并处理...")
 
             try:
                 result = q.get(timeout=SESSION_TIMEOUT + 5)
-                data = parse_sign_qr_code(parse_url(result))
-                print("收到扫码内容 ->", data)
             except Empty:
                 print("超时，未收到扫码数据。")
                 continue
@@ -293,25 +327,18 @@ if __name__ == "__main__":
                 continue
 
             if result:
-                f"{url}/api/rollcall/{data['rollcallId']}/answer_qr_rollcall"
-                body = {
-                    "data": data['data'],
-                    "deviceId": str(uuid.uuid4()),
-                }
-                headers = {
-                    "User-Agent": "Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Mobile Safari/537.36 Edg/141.0.0.0",
-                    "Content-Type": "application/json"
-                }
-                # "没用的，你试下就知道了"
-                res = requests.put(url, headers=headers, data=json.dumps(body), cookies= verified_cookies)
-                # 试了一下，签上了
-                # ”你单put没用的“
-                if res.status_code == 200:
-                    print("二维码签到成功!")
+                status = result.get("status")
+                message = result.get("message", "")
+                
+                if status == "success":
+                    print(f"✓ {message}")
                     break
+                elif status == "failed":
+                    print(f"✗ {message}")
+                    print("生成新的链接，请重试...")
                 else:
-                    print("签到失败，服务器返回状态码:", res.status_code)
-
+                    print(f"错误: {message}")
+                    print("生成新的链接，请重试...")
     finally:
         try:
             ngrok.kill()

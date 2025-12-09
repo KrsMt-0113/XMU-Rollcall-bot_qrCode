@@ -1,6 +1,5 @@
 requests
 pillow
-selenium
 Flask
 pyngrok
 xmulogin

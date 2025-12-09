@@ -1,6 +1,6 @@
 import json, threading, uuid, time, socket, os
 from queue import Queue, Empty
-from flask import Flask, request, jsonify, render_template_string
+from flask import Flask, request, jsonify, render_template
 from pyngrok import ngrok
 from parse_code import parse_sign_qr_code
 from xmulogin import xmulogin
@@ -28,131 +28,6 @@ app = Flask(__name__)
 sessions = {}
 login_session = None  # 存储登录后的 session
 
-HTML_TEMPLATE = """
-<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>XMU Rollcall bot - QRcode Scanner</title>
-  <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-      background: #000;
-      color: #fff;
-      overflow: hidden;
-      height: 100vh;
-      display: flex;
-      flex-direction: column;
-    }
-    h3 {
-      text-align: center;
-      padding: 15px;
-      background: rgba(0, 0, 0, 0.8);
-      font-size: 16px;
-      font-weight: normal;
-    }
-    #video-container {
-      flex: 1;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      overflow: hidden;
-    }
-    #video {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-    }
-    #canvas {
-      display: none;
-    }
-    #msg {
-      text-align: center;
-      padding: 15px;
-      background: rgba(0, 0, 0, 0.8);
-      font-size: 14px;
-      min-height: 50px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-  </style>
-</head>
-<body>
-  <h3>对准二维码，识别后自动上传</h3>
-  <div id="video-container">
-    <video id="video" autoplay playsinline></video>
-  </div>
-  <canvas id="canvas"></canvas>
-  <p id="msg">正在启动相机...</p>
-<script src="https://unpkg.com/jsqr/dist/jsQR.js"></script>
-<script>
-const sid = "{{ sid }}";
-const submitUrl = "/submit/" + sid;
-const video = document.getElementById("video");
-const canvas = document.getElementById("canvas");
-const ctx = canvas.getContext("2d");
-const msg = document.getElementById("msg");
-
-async function start() {
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ 
-      video: { 
-        facingMode: "environment",
-        width: { ideal: 1920 },
-        height: { ideal: 1080 }
-      }
-    });
-    video.srcObject = stream;
-    video.setAttribute("playsinline", true);
-    msg.textContent = "请对准二维码扫描";
-    requestAnimationFrame(tick);
-  } catch (e) {
-    msg.textContent = "无法访问相机: " + e.message;
-  }
-}
-
-function stopCamera() {
-  const s = video.srcObject;
-  if (s) s.getTracks().forEach(t => t.stop());
-}
-
-function tick() {
-  if (video.readyState === video.HAVE_ENOUGH_DATA) {
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const data = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const code = jsQR(data.data, data.width, data.height);
-    if (code) {
-      msg.textContent = "已识别，正在上传…";
-      stopCamera();
-      fetch(submitUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: code.data })
-      }).then(r=>r.json()).then(j=>{
-        msg.textContent = j.message || "上传完成";
-      }).catch(e=>{
-        msg.textContent = "上传失败: "+e;
-      });
-      return;
-    }
-  }
-  requestAnimationFrame(tick);
-}
-
-start();
-</script>
-</body>
-</html>
-"""
 
 def clear_console():
     if os.name == 'nt':
@@ -196,7 +71,7 @@ def scan_url_analysis(e: str):
 def scan_page(sid):
     if sid not in sessions:
         return "会话不存在或过期", 404
-    return render_template_string(HTML_TEMPLATE, sid=sid)
+    return render_template("scan.html", sid=sid)
 
 
 @app.route("/submit/<sid>", methods=["POST"])
@@ -312,7 +187,7 @@ if __name__ == "__main__":
 
             if result:
                 rollcall_url = f"{url}/api/rollcall/{data['rollcallId']}/answer_qr_rollcall"
-                # print("签到接口地址:", rollcall_url) # 调试用
+                print("签到接口地址:", rollcall_url) # 调试用
                 body = {
                     "data": data['data'],
                     "deviceId": str(uuid.uuid4()),

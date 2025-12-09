@@ -1,15 +1,15 @@
-import json, threading, uuid, time, socket, requests, os
+import json, threading, uuid, time, socket, os
 from queue import Queue, Empty
 from flask import Flask, request, render_template_string, jsonify
 from pyngrok import ngrok
 from parse_code import parse_sign_qr_code
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from login import login
-from get_config import get_config_path
+from xmulogin import xmulogin
 from urllib.parse import urlparse, parse_qs
 
-with open(get_config_path()) as f:
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+CONFIG_PATH = BASE_DIR + "/config.json"
+
+with open(CONFIG_PATH) as f:
     cfg = json.load(f)
 
 NGROK_TOKEN = cfg.get("ngrok_token")
@@ -247,27 +247,12 @@ def run_flask():
     app.run(host="0.0.0.0", port=5001, debug=False, use_reloader=False)
 
 if __name__ == "__main__":
-    clear_console()
-
-    chrome_options = Options()
-    chrome_options.add_argument("--headless")
-
-    print("正在初始化Selenium...")
-    driver = webdriver.Chrome(options=chrome_options)
-
-    driver.get("https://lnt.xmu.edu.cn")
-
-    ts = int(time.time() * 1000)
-    temp_header = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36"}
-    captcha_url = f"https://ids.xmu.edu.cn/authserver/checkNeedCaptcha.htl?username={USERNAME}&_={ts}"
-    res_data = requests.get(captcha_url, headers=temp_header).json()
-
-    login_status, verified_cookies = login(url, driver, res_data['isNeed'], USERNAME, PASSWORD)
-    if login_status:
+    session = xmulogin(type=3, username=USERNAME, password=PASSWORD)
+    if session:
         print("登录成功！")
     else:
         print("登录失败，程序终止。")
-        driver.quit()
+        time.sleep(1)
         exit()
 
     threading.Thread(target=run_flask, daemon=True).start()
@@ -332,10 +317,9 @@ if __name__ == "__main__":
                     "User-Agent": "Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Mobile Safari/537.36 Edg/141.0.0.0",
                     "Content-Type": "application/json"
                 }
-                # "没用的，你试下就知道了"
-                res = requests.put(rollcall_url, headers=headers, data=json.dumps(body), cookies= verified_cookies)
-                # 试了一下，签上了
-                # ”你单put没用的“
+
+                res = session.put(rollcall_url, headers=headers, data=json.dumps(body))
+
                 if res.status_code == 200:
                     print("二维码签到成功!")
                     break

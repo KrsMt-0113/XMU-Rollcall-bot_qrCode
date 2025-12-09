@@ -1,13 +1,13 @@
 import json, threading, uuid, time, socket, os
 from queue import Queue, Empty
-from flask import Flask, request, render_template_string, jsonify
+from flask import Flask, request, jsonify, render_template_string
 from pyngrok import ngrok
 from parse_code import parse_sign_qr_code
 from xmulogin import xmulogin
 from urllib.parse import urlparse, parse_qs
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-CONFIG_PATH = BASE_DIR + "/config.json"
+CONFIG_PATH = BASE_DIR + "/qrRollcall/config.json"
 
 with open(CONFIG_PATH) as f:
     cfg = json.load(f)
@@ -26,6 +26,7 @@ ngrok.set_auth_token(NGROK_TOKEN)
 
 app = Flask(__name__)
 sessions = {}
+login_session = None  # 存储登录后的 session
 
 HTML_TEMPLATE = """
 <!doctype html>
@@ -197,6 +198,7 @@ def scan_page(sid):
         return "会话不存在或过期", 404
     return render_template_string(HTML_TEMPLATE, sid=sid)
 
+
 @app.route("/submit/<sid>", methods=["POST"])
 def submit(sid):
     if sid not in sessions:
@@ -207,6 +209,7 @@ def submit(sid):
         return jsonify({"ok": False, "message": "没有二维码内容"}), 400
     sessions[sid].put(text)
     return jsonify({"ok": True, "message": "已收到二维码内容"})
+
 
 @app.route("/_shutdown", methods=["POST"])
 def _shutdown():
@@ -250,6 +253,7 @@ if __name__ == "__main__":
     session = xmulogin(type=3, username=USERNAME, password=PASSWORD)
     if session:
         print("登录成功！")
+        login_session = session  # 将登录session保存到全局变量
     else:
         print("登录失败，程序终止。")
         time.sleep(1)
@@ -318,13 +322,14 @@ if __name__ == "__main__":
                     "Content-Type": "application/json"
                 }
 
-                res = session.put(rollcall_url, headers=headers, data=json.dumps(body))
+                res = session.put(rollcall_url, headers=headers, json=body)
 
                 if res.status_code == 200:
                     print("二维码签到成功!")
                     break
                 else:
                     print("签到失败，服务器返回状态码:", res.status_code)
+                    print(res.json())
 
     finally:
         try:
